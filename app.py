@@ -50,7 +50,7 @@ def keep_alive_ping():
             print("[Keep-Alive] Ping muvaffaqiyatli!")
         except Exception as e:
             print(f"[Keep-Alive] Ping xatosi: {e}")
-        time.sleep(14 * 60)  # 14 daqiqa
+        time.sleep(10 * 60)  # 10 daqiqa
 
 ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
 ping_thread.start()

@@ -67,10 +67,13 @@ def get_unsubscribed_channels(user_id):
     if is_admin(user_id):
         return []
     
-    channels = database.get_channels()
+    # Use mandatory channels from new admin_channels system
+    channels = database.get_mandatory_channels()
     unsubscribed = []
     
     for ch_id, title, invite_link in channels:
+        if not invite_link:
+            continue
         try:
             res = bot.get_chat_member(ch_id, user_id)
             if res.status in ['left', 'kicked']:

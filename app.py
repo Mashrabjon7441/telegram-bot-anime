@@ -11,6 +11,28 @@ except Exception as e:
     print("Failed to import downloader_bot:", e)
     downloader_bot_instance = None
 
+# Initialize Database
+database.init_db()
+
+# Start bots in background threads
+print("Starting kino bot polling in background thread...")
+bot_thread = threading.Thread(target=bot.infinity_polling, daemon=True)
+bot_thread.start()
+
+def run_downloader():
+    if not downloader_bot_instance:
+        return
+    print("Starting downloader bot polling...")
+    try:
+        downloader_bot_instance.infinity_polling()
+    except Exception as e:
+        print("Downloader Bot polling thread failed:", e)
+
+# Start downloader bot
+print("Starting downloader bot polling in background thread...")
+dl_thread = threading.Thread(target=run_downloader, daemon=True)
+dl_thread.start()
+
 app = Flask(__name__)
 
 @app.route('/')
@@ -43,30 +65,8 @@ def home():
             "message": str(e)
         })
 
-def run_downloader():
-    if not downloader_bot_instance:
-        return
-    print("Starting downloader bot polling...")
-    try:
-        downloader_bot_instance.infinity_polling()
-    except Exception as e:
-        print("Downloader Bot polling thread failed:", e)
-
 if __name__ == '__main__':
-    # Initialize DB (if not already done)
-    database.init_db()
-    
-    # Start bot polling in a background thread to keep it alive
-    print("Starting kino bot polling in background thread...")
-    bot_thread = threading.Thread(target=bot.infinity_polling, daemon=True)
-    bot_thread.start()
-    
-    # Start downloader bot in background thread
-    dl_thread = threading.Thread(target=run_downloader, daemon=True)
-    dl_thread.start()
-    
-    # Run the web server to satisfy Render's port binding health-checks
+    # Run the web server manually for local testing
     port = int(os.environ.get("PORT", 5000))
     print(f"Starting web server on port {port}...")
     app.run(host="0.0.0.0", port=port)
-

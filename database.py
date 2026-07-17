@@ -43,6 +43,14 @@ def init_db():
             join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Create downloader_users table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS downloader_users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     # Create channels table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS channels (
@@ -197,4 +205,30 @@ def get_users():
     res = cursor.fetchall()
     conn.close()
     return [row[0] for row in res]
+
+# --- Downloader Users ---
+
+def add_downloader_user(user_id, username):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO downloader_users (user_id, username) VALUES (?, ?)", (user_id, username))
+    conn.commit()
+    conn.close()
+
+def get_downloader_users_count():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM downloader_users")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def get_downloader_users():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM downloader_users")
+    res = cursor.fetchall()
+    conn.close()
+    return [row[0] for row in res]
+
 

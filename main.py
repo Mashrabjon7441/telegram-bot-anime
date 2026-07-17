@@ -3,6 +3,9 @@ from telebot import types
 import config
 import database
 import random
+import os
+import subprocess
+import imageio_ffmpeg
 
 # Initialize database
 database.init_db()
@@ -149,6 +152,14 @@ def callback_handler(call):
         code = call.data.split(":")[1]
         bot.answer_callback_query(call.id)
         ask_for_episode_file(call.message, code)
+        
+    elif call.data.startswith("make_shorts:"):
+        code = call.data.split(":")[1]
+        file_id = call.data.split(":")[2]
+        bot.answer_callback_query(call.id)
+        import threading
+        t = threading.Thread(target=process_shorts_generation_task, args=(call.message, code, file_id))
+        t.start()
         
     elif call.data == "finish_add_eps":
         bot.answer_callback_query(call.id, "Tizim yakunlandi!")
@@ -404,8 +415,9 @@ def process_add_episode_title(message, code, file_id):
         
     success = database.add_episode(code, episode_title, file_id)
     if success:
-        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
+            types.InlineKeyboardButton(text="✂️ Shorts treyler yaratish", callback_data=f"make_shorts:{code}:{file_id}"),
             types.InlineKeyboardButton(text="➕ Yana qism qo'shish", callback_data=f"add_more_ep:{code}"),
             types.InlineKeyboardButton(text="✅ Yakunlash", callback_data="finish_add_eps")
         )
@@ -477,6 +489,108 @@ def process_channel_delete(message):
         bot.send_message(message.chat.id, f"✅ `{channel_id}` majburiy kanallardan o'chirildi!", reply_markup=get_channels_keyboard())
     else:
         bot.send_message(message.chat.id, f"❌ `{channel_id}` ro'yxatda topilmadi.", reply_markup=get_channels_keyboard())
+
+# --- Shorts Generator Helpers ---
+
+def generate_shorts_video(input_path, output_path, movie_code, bot_username):
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    
+    # Get system font
+    win_font = "C:/Windows/Fonts/arial.ttf"
+    linux_font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    font_arg = ""
+    if os.path.exists(win_font):
+        escaped_font = win_font.replace(":", "\\:").replace("\\", "/")
+        font_arg = f":fontfile='{escaped_font}'"
+    elif os.path.exists(linux_font):
+        font_arg = f":fontfile='{linux_font}'"
+        
+    bot_name_display = bot_username if bot_username.startswith("@") else f"@{bot_username}"
+    
+    # Crop center 9:16 and scale to 576x1024
+    # Overlay code top, bot username bottom
+    filter_complex = (
+        f"crop=in_h*9/16:in_h,"
+        f"scale=576:1024,"
+        f"drawtext=text='KODI\\: {movie_code}':x=(w-text_w)/2:y=120{font_arg}:fontsize=38:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=15,"
+        f"drawtext=text='BOT\\: {bot_name_display}':x=(w-text_w)/2:y=h-180{font_arg}:fontsize=34:fontcolor=yellow:box=1:boxcolor=black@0.6:boxborderw=12"
+    )
+    
+    cmd = [
+        ffmpeg_exe, "-y",
+        "-ss", "00:00:02", # start at 2s to guarantee clip availability
+        "-i", input_path,
+        "-t", "15", # clip duration 15s
+        "-vf", filter_complex,
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "26",
+        output_path
+    ]
+    
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode != 0:
+        print("FFmpeg error:", res.stderr.decode('utf-8', errors='ignore'))
+        return False
+    return True
+
+def process_shorts_generation_task(message, code, file_id):
+    status_msg = bot.send_message(message.chat.id, "⏳ Shorts video tayyorlanmoqda. Bu biroz vaqt olishi mumkin, iltimos kuting...")
+    try:
+        file_info = bot.get_file(file_id)
+        file_size = file_info.file_size
+        
+        # Check 20MB download limit from Telegram
+        if file_size > 20 * 1024 * 1024:
+            bot.edit_message_text(
+                f"⚠️ **Telegram cheklovi xatosi:**\n"
+                f"Yuklangan video o'lchami o'ta katta ({file_size / (1024*1024):.1f} MB).\n"
+                f"Telegram botlar uchun fayllarni yuklab olish cheklovi **20 MB** qilib belgilangan.\n"
+                f"Avtomatik Shorts yaratish uchun video hajmi 20 MB dan kichik bo'lishi kerak.",
+                message.chat.id,
+                status_msg.message_id,
+                parse_mode="Markdown"
+            )
+            return
+            
+        bot.edit_message_text("⏳ Video fayl yuklab olinmoqda...", message.chat.id, status_msg.message_id)
+        file_path = file_info.file_path
+        downloaded_file = bot.download_file(file_path)
+        
+        input_name = f"temp_in_{code}.mp4"
+        output_name = f"shorts_{code}.mp4"
+        
+        with open(input_name, 'wb') as f:
+            f.write(downloaded_file)
+            
+        bot.edit_message_text("⏳ Shorts treyler FFmpeg yordamida kesilmoqda va formatlanmoqda...", message.chat.id, status_msg.message_id)
+        
+        bot_username = bot.get_me().username
+        success = generate_shorts_video(input_name, output_name, code, bot_username)
+        
+        if success and os.path.exists(output_name):
+            bot.edit_message_text("📤 Shorts tayyor! Telegram'ga yuklanmoqda...", message.chat.id, status_msg.message_id)
+            bot.send_chat_action(message.chat.id, 'upload_video')
+            caption = f"🎬 **Kino uchun Shorts Treyler!**\n🔑 **Kodi:** {code}\n🤖 **Bot:** @{bot_username}"
+            with open(output_name, 'rb') as f:
+                bot.send_video(message.chat.id, f, caption=caption, parse_mode="Markdown")
+            try:
+                bot.delete_message(message.chat.id, status_msg.message_id)
+            except Exception:
+                pass
+        else:
+            bot.edit_message_text("❌ Shorts video yasalishida kutilmagan xatolik yuz berdi. FFmpeg buyrug'i to'g'ri ishlamadi.", message.chat.id, status_msg.message_id)
+            
+        # Clean up files
+        if os.path.exists(input_name):
+            os.remove(input_name)
+        if os.path.exists(output_name):
+            os.remove(output_name)
+            
+    except Exception as e:
+        bot.edit_message_text(f"❌ Xatolik yuz berdi: {str(e)}", message.chat.id, status_msg.message_id)
 
 # Start polling
 if __name__ == '__main__':

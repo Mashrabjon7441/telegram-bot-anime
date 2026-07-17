@@ -121,6 +121,24 @@ def start_cmd(message):
 def callback_handler(call):
     user_id = call.from_user.id
     
+    if call.data.startswith("toggle_ch:"):
+        _, ch_id, val = call.data.split(":")
+        database.set_channel_mandatory(ch_id, int(val))
+        bot.answer_callback_query(call.id, "Holat o'zgartirildi!")
+        send_channels_list_menu(call.message.chat.id, call.message.message_id)
+        return
+        
+    elif call.data == "refresh_ch_list":
+        bot.answer_callback_query(call.id, "Yangilandi")
+        send_channels_list_menu(call.message.chat.id, call.message.message_id)
+        return
+        
+    elif call.data == "manual_add_ch":
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "Qo'shiladigan kanalning ID raqamini yoki username'ini kiriting (Masalan: -100123456789 yoki @kanal_username):")
+        bot.register_next_step_handler(msg, process_channel_id)
+        return
+
     if call.data == "check_sub":
         unsubscribed = get_unsubscribed_channels(user_id)
         if unsubscribed:
@@ -277,33 +295,7 @@ def text_handler(message):
 
     # Channel configuration handlers
     elif text == "📢 Homiylar / Kanallar" and is_admin(user_id):
-        bot.send_message(message.chat.id, "Kanallarni boshqarish bo'limi:", reply_markup=get_channels_keyboard())
-        return
-
-    elif text == "⬅️ Admin panelga qaytish" and is_admin(user_id):
-        bot.send_message(message.chat.id, "Admin panelga qaytdingiz:", reply_markup=get_admin_keyboard())
-        return
-
-    elif text == "➕ Kanal qo'shish" and is_admin(user_id):
-        msg = bot.send_message(message.chat.id, "Kanalning ID yoki foydalanuvchi nomini kiriting (Masalan: @kanal_nomi yoki -100123456789):\n⚠️ Diqqat: Bot shu kanalda administrator bo'lishi shart!")
-        bot.register_next_step_handler(msg, process_channel_id)
-        return
-
-    elif text == "❌ Kanal o'chirish" and is_admin(user_id):
-        msg = bot.send_message(message.chat.id, "O'chiriladigan kanal foydalanuvchi nomini kiriting:")
-        bot.register_next_step_handler(msg, process_channel_delete)
-        return
-
-    elif text == "📋 Kanallar ro'yxati" and is_admin(user_id):
-        channels = database.get_channels()
-        if not channels:
-            bot.send_message(message.chat.id, "Hozircha majburiy a'zolikka qo'shilgan kanallar yo'q.")
-            return
-        
-        response = "📋 **Majburiy a'zolikdagi kanallar:**\n\n"
-        for ch_id, title, invite_link in channels:
-            response += f"📢 [{title}]({invite_link}) (`{ch_id}`)\n"
-        bot.send_message(message.chat.id, response, parse_mode="Markdown", disable_web_page_preview=True)
+        send_channels_list_menu(message.chat.id)
         return
 
     # Advertising handler
@@ -591,6 +583,59 @@ def process_shorts_generation_task(message, code, file_id):
             
     except Exception as e:
         bot.edit_message_text(f"❌ Xatolik yuz berdi: {str(e)}", message.chat.id, status_msg.message_id)
+
+def send_channels_list_menu(chat_id, edit_message_id=None):
+    channels = database.get_admin_channels()
+    text = (
+        "📢 **Majburiy a'zolik kanallari boshqaruvi**\n\n"
+        "Bot admin qilingan kanallar ro'yxati quyida keltirilgan.\n"
+        "Tugmani bosish orqali loyihani **Majburiy obuna** qilish yoki o'chirish mumkin:\n\n"
+        "💡 *Maslahat: Istalgan kanalingizga botni Qo'shib, adminlik bering. Shunda u bu yerda avtomatik paydo bo'ladi!*"
+    )
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    if not channels:
+        text += "\n\n📭 *Hozircha bot admin qilingan kanallar ro'yxati bo'sh.*"
+    else:
+        for ch_id, title, username, invite, is_mandatory in channels:
+            status = "✅ Majburiy obuna" if is_mandatory == 1 else "❌ Majburiy emas"
+            btn_text = f"📢 {title} | {status}"
+            markup.add(
+                types.InlineKeyboardButton(text=btn_text, callback_data=f"toggle_ch:{ch_id}:{1 if is_mandatory == 0 else 0}")
+            )
+            
+    markup.add(
+        types.InlineKeyboardButton(text="➕ Kanalni qo'lda qo'shish", callback_data="manual_add_ch"),
+        types.InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_ch_list")
+    )
+    
+    if edit_message_id:
+        try:
+            bot.edit_message_text(text, chat_id, edit_message_id, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            pass
+    else:
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
+# Listen to bot rights changes in channels
+@bot.my_chat_member_handler()
+def my_chat_member_update(update):
+    try:
+        chat = update.chat
+        new_member = update.new_chat_member
+        if chat.type == "channel":
+            if new_member.status in ["administrator", "creator"]:
+                invite_link = None
+                try:
+                    invite_link = bot.export_chat_invite_link(chat.id)
+                except Exception:
+                    if chat.username:
+                        invite_link = f"https://t.me/{chat.username}"
+                database.save_admin_channel(chat.id, chat.title, chat.username, invite_link)
+            else:
+                database.remove_admin_channel(chat.id)
+    except Exception as e:
+        print("Error in my_chat_member_handler:", e)
 
 # Start polling
 if __name__ == '__main__':

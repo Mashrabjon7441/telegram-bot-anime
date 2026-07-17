@@ -24,10 +24,11 @@ def get_main_keyboard(user_id):
 def get_admin_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_stats = types.KeyboardButton("📊 Statistika")
+    btn_channels = types.KeyboardButton("📢 Homiylar / Kanallar")
     btn_adv = types.KeyboardButton("✉️ Reklama yuborish")
     btn_back = types.KeyboardButton("⬅️ Bosh sahifa")
-    keyboard.row(btn_stats, btn_adv)
-    keyboard.row(btn_back)
+    keyboard.row(btn_stats, btn_channels)
+    keyboard.row(btn_adv, btn_back)
     return keyboard
 
 # --- Channel Subscription Setup ---
@@ -98,6 +99,24 @@ def start_cmd(message):
 def callback_handler(call):
     user_id = call.from_user.id
     
+    if call.data.startswith("toggle_ch:"):
+        _, ch_id, val = call.data.split(":")
+        database.set_channel_mandatory(ch_id, int(val))
+        bot.answer_callback_query(call.id, "Holat o'zgartirildi!")
+        send_channels_list_menu(call.message.chat.id, call.message.message_id)
+        return
+        
+    elif call.data == "refresh_ch_list":
+        bot.answer_callback_query(call.id, "Yangilandi")
+        send_channels_list_menu(call.message.chat.id, call.message.message_id)
+        return
+        
+    elif call.data == "manual_add_ch":
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "Qo'shiladigan kanalning ID raqamini yoki username'ini kiriting (Masalan: -100123456789 yoki @kanal_username):")
+        bot.register_next_step_handler(msg, process_channel_id)
+        return
+
     if call.data == "check_sub":
         unsubscribed = get_unsubscribed_channels(user_id)
         if unsubscribed:
@@ -175,6 +194,10 @@ def text_handler(message):
     elif text == "✉️ Reklama yuborish" and is_admin(user_id):
         msg = bot.send_message(message.chat.id, "Foydalanuvchilarga yubormoqchi bo'lgan reklama xabarini yuboring (Matn, rasm, video yoki audio):\n\nBekor qilish uchun 'bekor' deb yozing.")
         bot.register_next_step_handler(msg, process_adv_message)
+        return
+
+    elif text == "📢 Homiylar / Kanallar" and is_admin(user_id):
+        send_channels_list_menu(message.chat.id)
         return
 
     # Normal Link Download Check
@@ -261,3 +284,83 @@ def download_and_send_video(message, url):
                     os.remove(f)
                 except Exception:
                     pass
+
+
+def send_channels_list_menu(chat_id, edit_message_id=None):
+    channels = database.get_admin_channels()
+    text = (
+        "📢 **Majburiy a'zolik kanallari boshqaruvi**\n\n"
+        "Bot admin qilingan kanallar ro'yxati quyida keltirilgan.\n"
+        "Tugmani bosish orqali **Majburiy obuna** qilish yoki o'chirish mumkin:\n\n"
+        "💡 *Maslahat: Kanalingizga botni qo'shib, adminlik bering. U bu yerda paydo bo'ladi!*"
+    )
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    if not channels:
+        text += "\n\n📭 *Hozircha bot admin qilingan kanallar yo'q.*"
+    else:
+        for ch_id, title, username, invite, is_mandatory in channels:
+            status = "✅ Majburiy obuna" if is_mandatory == 1 else "❌ Majburiy emas"
+            btn_text = f"📢 {title} | {status}"
+            markup.add(
+                types.InlineKeyboardButton(text=btn_text, callback_data=f"toggle_ch:{ch_id}:{1 if is_mandatory == 0 else 0}")
+            )
+    markup.add(
+        types.InlineKeyboardButton(text="➕ Kanalni qo'lda qo'shish", callback_data="manual_add_ch"),
+        types.InlineKeyboardButton(text="🔄 Yangilash", callback_data="refresh_ch_list")
+    )
+    if edit_message_id:
+        try:
+            bot.edit_message_text(text, chat_id, edit_message_id, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            pass
+    else:
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
+
+def process_channel_id(message):
+    channel_id = message.text.strip()
+    if not channel_id:
+        bot.send_message(message.chat.id, "Xato: bo'sh matn yuborildi.")
+        return
+    msg = bot.send_message(message.chat.id, "Kanal nomini kiriting (Tugmada chiqadigan yozuv):")
+    bot.register_next_step_handler(msg, process_channel_title, channel_id)
+
+
+def process_channel_title(message, channel_id):
+    title = message.text.strip()
+    if not title:
+        bot.send_message(message.chat.id, "Xato: bo'sh yozuv kiritildi.")
+        return
+    msg = bot.send_message(message.chat.id, "Kanalga taklif havolasini (link) kiriting:")
+    bot.register_next_step_handler(msg, process_channel_link, channel_id, title)
+
+
+def process_channel_link(message, channel_id, title):
+    invite_link = message.text.strip()
+    if not invite_link:
+        bot.send_message(message.chat.id, "Xato: bo'sh link yuborildi.")
+        return
+    database.save_admin_channel(channel_id, title, username=None, invite_link=invite_link)
+    database.set_channel_mandatory(channel_id, 1)
+    bot.send_message(message.chat.id, f"✅ Kanal muvaffaqiyatli qo'shildi!\n\nID: `{channel_id}`\nNomi: {title}\nLink: {invite_link}", parse_mode="Markdown")
+    send_channels_list_menu(message.chat.id)
+
+
+@bot.my_chat_member_handler()
+def my_chat_member_update(update):
+    try:
+        chat = update.chat
+        new_member = update.new_chat_member
+        if chat.type == "channel":
+            if new_member.status in ["administrator", "creator"]:
+                invite_link = None
+                try:
+                    invite_link = bot.export_chat_invite_link(chat.id)
+                except Exception:
+                    if chat.username:
+                        invite_link = f"https://t.me/{chat.username}"
+                database.save_admin_channel(chat.id, chat.title, chat.username, invite_link)
+            else:
+                database.remove_admin_channel(chat.id)
+    except Exception as e:
+        print("[Downloader Bot] Error in my_chat_member_handler:", e)

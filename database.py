@@ -60,6 +60,16 @@ def init_db():
             invite_link TEXT NOT NULL
         )
     """)
+    # Create admin_channels table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_channels (
+            channel_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            username TEXT,
+            invite_link TEXT,
+            is_mandatory INTEGER DEFAULT 0
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -239,5 +249,51 @@ def get_downloader_users():
     res = cursor.fetchall()
     conn.close()
     return [row[0] for row in res]
+
+# --- Administered Channels ---
+
+def save_admin_channel(channel_id, title, username=None, invite_link=None):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO admin_channels (channel_id, title, username, invite_link)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(channel_id) DO UPDATE SET
+            title=excluded.title,
+            username=excluded.username,
+            invite_link=COALESCE(excluded.invite_link, invite_link)
+    """, (str(channel_id), title, username, invite_link))
+    conn.commit()
+    conn.close()
+
+def remove_admin_channel(channel_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM admin_channels WHERE channel_id = ?", (str(channel_id),))
+    conn.commit()
+    conn.close()
+
+def set_channel_mandatory(channel_id, is_mandatory):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE admin_channels SET is_mandatory = ? WHERE channel_id = ?", (int(is_mandatory), str(channel_id)))
+    conn.commit()
+    conn.close()
+
+def get_admin_channels():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT channel_id, title, username, invite_link, is_mandatory FROM admin_channels")
+    res = cursor.fetchall()
+    conn.close()
+    return res
+
+def get_mandatory_channels():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT channel_id, title, invite_link FROM admin_channels WHERE is_mandatory = 1")
+    res = cursor.fetchall()
+    conn.close()
+    return res
 
 

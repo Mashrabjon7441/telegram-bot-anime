@@ -196,6 +196,15 @@ def get_channels():
     cursor.execute("SELECT channel_id, title, invite_link FROM channels")
     res = cursor.fetchall()
     conn.close()
+    
+    if not res:
+        try:
+            import config
+            fallback = getattr(config, 'MANDATORY_CHANNELS', [])
+            return [(item.get('channel_id'), item.get('title'), item.get('invite_link')) for item in fallback if item]
+        except Exception:
+            return []
+            
     return res
 
 def get_users():

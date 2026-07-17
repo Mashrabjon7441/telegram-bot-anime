@@ -35,6 +35,27 @@ dl_thread.start()
 
 app = Flask(__name__)
 
+# --- Keep-Alive: Render free tier uxlab qolmasligi uchun ---
+import time
+import urllib.request
+
+def keep_alive_ping():
+    """14 daqiqada bir marta o'z-o'ziga ping yuboradi (Render 15 min da o'chiradi)"""
+    time.sleep(60)  # botlar ishga tushguncha 60s kut
+    port = int(os.environ.get("PORT", 5000))
+    url = f"http://localhost:{port}/"
+    while True:
+        try:
+            urllib.request.urlopen(url, timeout=10)
+            print("[Keep-Alive] Ping muvaffaqiyatli!")
+        except Exception as e:
+            print(f"[Keep-Alive] Ping xatosi: {e}")
+        time.sleep(14 * 60)  # 14 daqiqa
+
+ping_thread = threading.Thread(target=keep_alive_ping, daemon=True)
+ping_thread.start()
+
+
 @app.route('/')
 def home():
     try:

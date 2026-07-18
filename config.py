@@ -40,3 +40,5 @@ MANDATORY_CHANNELS = [
     #     "invite_link": "https://t.me/kanal_username"
     # }
 ]
+# Web Admin Panel password
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin777")

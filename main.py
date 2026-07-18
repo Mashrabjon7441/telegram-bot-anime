@@ -296,9 +296,22 @@ def text_handler(message):
         bot.send_message(message.chat.id, f"📊 Bot a'zolari soni (foydalanuvchilar): {count} ta")
         return
 
-    # Channel configuration handlers
+
+    # Channel configuration handlers (yangi inline tizim)
     elif text == "📢 Homiylar / Kanallar" and is_admin(user_id):
         send_channels_list_menu(message.chat.id)
+        return
+
+    # Eski kanal klaviatura tugmalari — yangi tizimga yo'naltirish
+    elif text in ["⬅️ Admin panelga qaytish", "📋 Kanallar ro'yxati",
+                  "➕ Kanal qo'shish", "❌ Kanal o'chirish"] and is_admin(user_id):
+        # Eski klaviaturani olib tashlab, admin panelni ko'rsatamiz
+        if text == "⬅️ Admin panelga qaytish":
+            bot.send_message(message.chat.id, "Admin panelga qaytdingiz:", reply_markup=get_admin_keyboard())
+        elif text == "📋 Kanallar ro'yxati":
+            send_channels_list_menu(message.chat.id)
+        elif text in ["➕ Kanal qo'shish", "❌ Kanal o'chirish"]:
+            send_channels_list_menu(message.chat.id)
         return
 
     # Advertising handler

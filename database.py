@@ -289,11 +289,24 @@ def get_admin_channels():
     return res
 
 def get_mandatory_channels():
+    """Majburiy obuna kanallarni qaytaradi.
+    Avval bazadan qidiradi, bo'sh bo'lsa config.py dagi ro'yxatdan oladi."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("SELECT channel_id, title, invite_link FROM admin_channels WHERE is_mandatory = 1")
     res = cursor.fetchall()
     conn.close()
-    return res
+    if res:
+        return res
+    # Fallback: config.py dagi doimiy ro'yxat (Render restart bo'lganda ham ishlaydi)
+    try:
+        import config
+        fallback = getattr(config, 'MANDATORY_CHANNELS', [])
+        return [
+            (str(item['channel_id']), item.get('title', 'Kanal'), item.get('invite_link', ''))
+            for item in fallback if item and item.get('channel_id')
+        ]
+    except Exception:
+        return []
 
 

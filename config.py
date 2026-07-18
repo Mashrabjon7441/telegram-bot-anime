@@ -10,12 +10,33 @@ DOWNLOADER_BOT_TOKEN = os.getenv("DOWNLOADER_BOT_TOKEN", "6317346772:AAHk97Ik2RS
 # You can get your ID from bots like @userinfobot or @dtgbot
 ADMIN_IDS = [5899807377] # Replace with your actual user ID(s)
 
-# Doimiy homiy kanallar ro'yxati (Agar bot ichidan kiritilmasa, shulardan foydalanadi).
-# Format: [{"channel_id": "@kanal_username_yoki_id", "title": "Kanal nomi", "invite_link": "https://t.me/link"}]
+# ═══════════════════════════════════════════════════════════════
+# MAJBURIY OBUNA KANALLAR ROYHATI
+# Bu yerga yozing — Render restart bo'lsayam o'chmaydi!
+#
+# channel_id: @username yoki -100XXXXXXXXXX (raqamli ID)
+# title: Tugmada ko'rinadigan kanal nomi
+# invite_link: Kanalga havola (ochiq kanal: https://t.me/username)
+#
+# MISOL:
+# MANDATORY_CHANNELS = [
+#     {
+#         "channel_id": "@mening_kanalim",
+#         "title": "Kino kanalimiz",
+#         "invite_link": "https://t.me/mening_kanalim"
+#     },
+#     {
+#         "channel_id": "-1001234567890",
+#         "title": "Ikkinchi kanal",
+#         "invite_link": "https://t.me/+abcXYZ123"
+#     }
+# ]
+# ═══════════════════════════════════════════════════════════════
 MANDATORY_CHANNELS = [
+    # Kanalingizni shu yerga qo'shing:
     # {
-    #     "channel_id": "@my_channel_username", 
-    #     "title": "Kanalimizga A'zo bo'ling", 
-    #     "invite_link": "https://t.me/my_channel_username"
+    #     "channel_id": "@kanal_username",
+    #     "title": "Kanalimizga a'zo bo'ling",
+    #     "invite_link": "https://t.me/kanal_username"
     # }
 ]
